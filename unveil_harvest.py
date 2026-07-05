@@ -91,30 +91,36 @@ def harvest(city):
             return d<=R
 
     seen_n=set(); seen_c=set(); rows=[]
+    CHUNK=5  # buyuk bbox + cok alt-etiket kombinasyonu Overpass'ta sessizce bos donebiliyor; kucuk gruplar guvenli
     for cat,filters in QCAT.items():
-        clauses="".join(f'nwr[{f.split("=")[0]}={json.dumps(f.split("=")[1])}]["name"]({bbox});' for f in filters)
-        q=f'[out:json][timeout:{qtimeout}];({clauses});out center tags;'
-        print(f"[{name}] {cat} sorgulaniyor...",flush=True)
-        try:
-            js=overpass(q, qtimeout)
-        except Exception as e:
-            print(f"  !! {cat} atlandi: {e}",flush=True)
-            continue
-        n_before=len(rows)
-        for el in js.get('elements',[]):
-            t=el.get('tags',{}); nm=(t.get('name') or '').strip()
-            if len(nm)<3 or BADNAME.search(nm): continue
-            if cat=='religious_heritage' and t.get('amenity')=='place_of_worship' and t.get('religion')!='muslim': continue
-            if cat=='forests_nature_reserves' and t.get('natural')=='wood' and 'name' not in t: continue
-            lat=el.get('lat') or el.get('center',{}).get('lat'); lng=el.get('lon') or el.get('center',{}).get('lon')
-            if lat is None or not in_area(lat,lng): continue
-            kn=norm(nm); kc=(cat,round(lat,3),round(lng,3))
-            if kn in seen_n or kc in seen_c: continue
-            seen_n.add(kn); seen_c.add(kc)
-            s_score=4.2+(0.3 if 'wikidata' in t else 0)+(0.1 if 'wikipedia' in t else 0)
-            rows.append([nm,cat,round(lat,4),round(lng,4),round(min(s_score,4.7),1)])
-        print(f"  -> {cat}: +{len(rows)-n_before} yer (toplam {len(rows)})",flush=True)
-        time.sleep(3)
+        n_before_cat=len(rows)
+        raw_total=0
+        for ci in range(0, len(filters), CHUNK):
+            chunk=filters[ci:ci+CHUNK]
+            clauses="".join(f'nwr[{f.split("=")[0]}={json.dumps(f.split("=")[1])}]["name"]({bbox});' for f in chunk)
+            q=f'[out:json][timeout:{qtimeout}];({clauses});out center tags;'
+            print(f"[{name}] {cat} sorgulaniyor (parca {ci//CHUNK+1}/{(len(filters)-1)//CHUNK+1})...",flush=True)
+            try:
+                js=overpass(q, qtimeout)
+            except Exception as e:
+                print(f"  !! {cat} parca {ci//CHUNK+1} atlandi: {e}",flush=True)
+                continue
+            raw_total+=len(js.get('elements',[]))
+            for el in js.get('elements',[]):
+                t=el.get('tags',{}); nm=(t.get('name') or '').strip()
+                if len(nm)<3 or BADNAME.search(nm): continue
+                if cat=='religious_heritage' and t.get('amenity')=='place_of_worship' and t.get('religion')!='muslim': continue
+                if cat=='forests_nature_reserves' and t.get('natural')=='wood' and 'name' not in t: continue
+                lat=el.get('lat') or el.get('center',{}).get('lat'); lng=el.get('lon') or el.get('center',{}).get('lon')
+                if lat is None or not in_area(lat,lng): continue
+                kn=norm(nm); kc=(cat,round(lat,3),round(lng,3))
+                if kn in seen_n or kc in seen_c: continue
+                seen_n.add(kn); seen_c.add(kc)
+                s_score=4.2+(0.3 if 'wikidata' in t else 0)+(0.1 if 'wikipedia' in t else 0)
+                rows.append([nm,cat,round(lat,4),round(lng,4),round(min(s_score,4.7),1)])
+            time.sleep(2)
+        print(f"  -> {cat}: ham_eleman:{raw_total} +{len(rows)-n_before_cat} yer (toplam {len(rows)})",flush=True)
+        time.sleep(1)
     rows.sort(key=lambda r:(r[1],-r[4]))
     os.makedirs('packs',exist_ok=True)
     out=f"packs/{name}.json"
