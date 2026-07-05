@@ -1,0 +1,32 @@
+name: Unveil City Pack Harvest
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  harvest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Klasoru garanti et
+        run: mkdir -p packs && touch packs/.gitkeep
+
+      - name: Yerleri topla (Overpass)
+        run: python3 unveil_harvest.py
+
+      - name: Ne uretildi goster
+        if: always()
+        run: |
+          echo "--- packs/ icerigi ---"
+          ls -la packs/ || echo "packs klasoru yok!"
+
+      - name: Sonucu repoya yaz
+        if: always()
+        run: |
+          git config user.name "unveil-bot"
+          git config user.email "bot@users.noreply.github.com"
+          git add -A packs/
+          git commit -m "City packs harvested" || echo "commit edilecek degisiklik yok"
+          git push
