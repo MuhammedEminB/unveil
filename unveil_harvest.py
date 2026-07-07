@@ -60,8 +60,10 @@ def overpass(q, qtimeout=170):
                     return json.load(r)
             except Exception as e:
                 last_err=e
-                print(f"  ! {m} deneme {attempt+1} basarisiz: {e}",flush=True)
-                time.sleep(5)
+                is_429 = getattr(e,'code',None)==429 or '429' in str(e)
+                wait = 25 if is_429 else 5  # rate-limit hatasinda cok daha uzun bekle
+                print(f"  ! {m} deneme {attempt+1} basarisiz: {e} ({'429 - '+str(wait)+'sn bekleniyor' if is_429 else str(wait)+'sn bekleniyor'})",flush=True)
+                time.sleep(wait)
     raise RuntimeError(f"tum aynalar basarisiz, son hata: {last_err}")
 
 def harvest(city):
@@ -102,8 +104,8 @@ def harvest(city):
             print(f"[{name}] {cat} sorgulaniyor (parca {ci//CHUNK+1}/{(len(filters)-1)//CHUNK+1})...",flush=True)
             try:
                 js=overpass(q, qtimeout)
-            except Exception as e:
-                print(f"  !! {cat} parca {ci//CHUNK+1} atlandi: {e}",flush=True)
+            except Exception as qerr:
+                print(f"  !! {cat} parca {ci//CHUNK+1} atlandi: {qerr}",flush=True)
                 continue
             raw_total+=len(js.get('elements',[]))
             for el in js.get('elements',[]):
@@ -118,9 +120,9 @@ def harvest(city):
                 seen_n.add(kn); seen_c.add(kc)
                 s_score=4.2+(0.3 if 'wikidata' in t else 0)+(0.1 if 'wikipedia' in t else 0)
                 rows.append([nm,cat,round(lat,4),round(lng,4),round(min(s_score,4.7),1)])
-            time.sleep(2)
+            time.sleep(3)
         print(f"  -> {cat}: ham_eleman:{raw_total} +{len(rows)-n_before_cat} yer (toplam {len(rows)})",flush=True)
-        time.sleep(1)
+        time.sleep(2)
     rows.sort(key=lambda r:(r[1],-r[4]))
     os.makedirs('packs',exist_ok=True)
     out=f"packs/{name}.json"
